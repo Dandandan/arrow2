@@ -216,11 +216,9 @@ fn null_sum<T: NativeType + AddAssign + Sum>(values: &[T], bitmap: &Bitmap) -> T
         .zip(iter)
         .fold(T::new_simd(), |mut acc, (chunk, validity_chunk)| {
             let chunk = T::from_slice(chunk);
-            let mut iter = BitChunkIter::new(validity_chunk);
-            for i in 0..T::LANES {
-                if iter.next().unwrap() {
-                    acc[i] += chunk[i];
-                }
+            let iter = BitChunkIter::new(validity_chunk);
+            for (i, b) in (0..T::LANES).zip(iter) {
+                acc[i] += if b { chunk[i] } else { T::default() };
             }
             acc
         });
@@ -236,6 +234,7 @@ fn null_sum<T: NativeType + AddAssign + Sum>(values: &[T], bitmap: &Bitmap) -> T
     }
     reduced
 }
+
 
 /// Returns the sum of values in the array.
 ///
