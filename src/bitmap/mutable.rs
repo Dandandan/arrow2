@@ -123,14 +123,9 @@ impl MutableBitmap {
     /// Extends [`MutableBitmap`] by `additional` values of constant `value`.
     #[inline]
     pub fn extend_constant(&mut self, additional: usize, value: bool) {
-        if value {
-            let iter = std::iter::repeat(true).take(additional);
-            self.extend_from_trusted_len_iter(iter);
-        } else {
-            self.buffer
-                .resize((self.length + additional).saturating_add(7) / 8, 0);
-            self.length += additional;
-        }
+        let constant = if value { 255 } else { 0 };
+        self.buffer
+            .resize((self.length + additional).saturating_add(7) / 8, constant);
     }
 
     /// Returns whether the position `index` is set.
@@ -285,6 +280,7 @@ impl MutableBitmap {
     /// Extends `self` from an iterator of trusted len.
     /// # Safety
     /// The caller must guarantee that the iterator has a trusted len.
+    #[inline(always)]
     pub unsafe fn extend_from_trusted_len_iter_unchecked<I: Iterator<Item = bool>>(
         &mut self,
         mut iterator: I,
