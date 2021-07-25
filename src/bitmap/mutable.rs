@@ -1,5 +1,7 @@
 use std::iter::FromIterator;
 
+use itertools::Itertools;
+
 use crate::{buffer::MutableBuffer, trusted_len::TrustedLen};
 
 use super::utils::{get_bit, null_count, set, set_bit, BitmapIter};
@@ -247,24 +249,27 @@ impl FromIterator<bool> for MutableBitmap {
 }
 
 #[inline]
-fn extend<I: Iterator<Item = bool>>(buffer: &mut [u8], length: usize, mut iterator: I) {
+fn extend<I: Iterator<Item = bool>>(buffer: &mut [u8], length: usize, iterator: I) {
     let chunks = length / 8;
-    let reminder = length % 8;
+    let remainder = length % 8;
 
-    buffer[..chunks].iter_mut().for_each(|byte| {
-        (0..8).for_each(|i| {
-            if iterator.next().unwrap() {
-                *byte = set(*byte, i, true)
-            }
-        })
-    });
+    let chunk_iter = &iterator.chunks(8);
 
-    if reminder != 0 {
+    buffer[..chunks]
+        .iter_mut()
+        .zip(chunk_iter)
+        .for_each(|(byte, chunk)| {
+            chunk.enumerate().for_each(|(i, value)| {
+                *byte |= if value { 1 << i } else { 0 };
+            })
+        });
+
+    if remainder != 0 {
         let last = &mut buffer[chunks];
-        iterator.enumerate().for_each(|(i, value)| {
-            if value {
-                *last = set(*last, i, true)
-            }
+        chunk_iter.into_iter().for_each(|chunk| {
+            chunk.enumerate().for_each(|(i, value)| {
+                *last |= if value { 1 << i } else { 0 };
+            })
         });
     }
 }
@@ -295,12 +300,8 @@ impl MutableBitmap {
             }
             // the iterator will not fill the last byte
             let byte = self.buffer.as_mut_slice().last_mut().unwrap();
-            let mut i = bit_offset;
-            for value in iterator {
-                if value {
-                    *byte = set(*byte, i, true);
-                }
-                i += 1;
+            for (i, value) in iterator.enumerate() {
+                *byte |= if value { 1 << i } else { 0 };
             }
             self.length += length;
             return;
@@ -314,9 +315,7 @@ impl MutableBitmap {
             let byte = self.buffer.as_mut_slice().last_mut().unwrap();
             (bit_offset..8).for_each(|i| {
                 let value = iterator.next().unwrap();
-                if value {
-                    *byte = set(*byte, i, true);
-                }
+                *byte |= if value { 1 << i } else { 0 };
             });
             self.length += 8 - bit_offset;
             length -= 8 - bit_offset;
